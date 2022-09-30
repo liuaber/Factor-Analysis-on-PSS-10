@@ -1,0 +1,527 @@
+---
+title: "LPA_trial"
+author: "Bowen Liu"
+date: "6/12/21"
+output: html_document
+---
+
+## PSS
+
+A more reasonable way is to include 1738 persons that completes the PSS-10 survey. Then claim that 1699 of them complete "all" the corresponding demographic questions. (Which, we avoid the imputation at this stage. (39/1738 did not enter all the responses))
+```{r PSS: Perceived Stress Scale}
+setwd("~/Desktop/covid19_survey")
+covid = read.csv("covid19_data.csv")
+sum(is.na(covid$Q1)) 
+# There are 2 null responses for Q1, which indicates these 2 "participants" did 
+# not click on anaything to the informed consent form at the beginning. Hence, it's reasonabale to exclude them as part of this study. 
+covid = covid[-c(which(is.na(covid$Q1)==TRUE)),] 
+dim(covid) #Check if the null responses have been removed. 
+sum(covid$Q1 == 6) 
+#6 indicates that these "participants"" answered no for the informed consent form, 
+#Thus, we have 5 people did not agree with the information consent form. They
+#should be excluded from the participants of this study. 
+covid = covid[-c(which(covid$Q1 == 6)),] 
+#dim(covid) #Now this should leave us with 83 responses in total from the start
+#### Demographics continues here
+covid_pss = covid[-c(which(is.na(covid$PSS_1)==TRUE|is.na(covid$PSS_2)==TRUE|is.na(covid$PSS_3)==TRUE|
+is.na(covid$PSS_4)==TRUE|is.na(covid$PSS_5)==TRUE|is.na(covid$PSS_6)==TRUE|is.na(covid$PSS_7)==TRUE|is.na(covid$PSS_8)==TRUE|is.na(covid$PSS_9)==TRUE|is.na(covid$PSS_10)==TRUE)),]
+ #345 responses was deleted here. 1738 responses left for CAS scale calculation
+##### We shall only include complete responses for a scale. 
+##### Adding a column for total score of PSS, notice in the qualtrics the responses were labelled as 1-5.
+##### Instead the actual range for each response is 0-4. 
+##### 1,2,3,6,9,10 are negative questions, so sum them first and -6 for the reasons stated above. 
+##### For 4,5,7,8, the original range in the dataset is 1-5. Now we reverse it by using 5 minus the item. 
+covid_pss_scale = covid_pss[,c(19:28)]
+library(psych)
+KMO(covid_pss_scale)
+bartlett.test(covid_pss_scale)
+
+attach(covid_pss)
+covid_pss$PSS_total = (PSS_1+PSS_2+PSS_3+ PSS_6+PSS_9+PSS_10 -6)+(5-PSS_4)+(5-PSS_5)+(5-PSS_7)+(5-PSS_8) 
+detach(covid_pss)
+
+#### FA
+covid_pss_scale = covid_pss
+covid_pss_scale$PSS_1 = covid_pss_scale$PSS_1-1
+covid_pss_scale$PSS_2 = covid_pss_scale$PSS_2-1
+covid_pss_scale$PSS_3 = covid_pss_scale$PSS_3-1
+covid_pss_scale$PSS_6 = covid_pss_scale$PSS_6-1
+covid_pss_scale$PSS_9 = covid_pss_scale$PSS_9-1
+covid_pss_scale$PSS_10 = covid_pss_scale$PSS_10-1
+covid_pss_scale$PSS_4 = 5-covid_pss_scale$PSS_4
+covid_pss_scale$PSS_5 = 5-covid_pss_scale$PSS_5
+covid_pss_scale$PSS_7 = 5-covid_pss_scale$PSS_7
+covid_pss_scale$PSS_8 = 5-covid_pss_scale$PSS_8
+covid_pss_scale$total = covid_pss$PSS_total
+#covid_pss_men = subset(covid_pss_scale,Q1.1 == 1)
+#covid_pss_women = subset(covid_pss_scale,Q1.1 == 2)
+covid_pss_scale = covid_pss_scale[,c(19:28)]
+#covid_pss_scale_women = covid_pss_women[,c(19:28)]
+#covid_pss_scale_men = covid_pss_men[,c(19:28)]
+library(MASS)
+library(psych)
+library(REdaS)
+KMO(covid_pss_scale)
+#Diagnol of the anti-image correlation matrix
+diag(KMO(covid_pss_scale)$ImCov)
+###Only 4,5,7,8,9 are included.(Since the corresponding diagonal elements of the anti-image correlation matridx > 0.5)
+covid_pss_scale = covid_pss_scale[,c(4,5,7,8,9)]
+#bartlett.test(covid_pss_scale)
+bart_spher(covid_pss_scale)
+KMO(covid_pss_scale)
+
+pca_pss = princomp(covid_pss_scale, scores=TRUE, cor=TRUE)
+screeplot(pca_pss, type="line", main="Scree Plot") 
+
+summary(pca_pss)
+library(nFactors)
+fa.parallel(covid_pss_scale)
+a = factanal(covid_pss_scale,factor=2,rotation = "varimax",scores = "regression")
+communality = 100*(1 - a$uniquenesses) 
+fa.pss <- fa(r=covid_pss_scale, 
+ nfactors = 2, SMC=TRUE, covar=TRUE,
+ fm="pa", # type of factor analysis we want to use (“pa” is principal axis factoring)
+ max.iter=50, # (50 is the default, but we have changed it to 100
+ rotate="varimax") # none rotation
+print(fa.pss)
+fa.diagram(fa.pss)
+factor1 = fa.pss$scores[,1]
+factor2 = fa.pss$scores[,2]
+IQR(factor1)
+length(which(factor1<quantile(factor1,0.75)+1.5*IQR(factor1) & factor1>quantile(factor1,0.25)-1.5*IQR(factor1)))
+include_factor = which(factor1<quantile(factor1,0.75)+1.5*IQR(factor1) & factor1>quantile(factor1,0.25)-1.5*IQR(factor1))
+
+#length(which(factor2<quantile(factor2,0.75)+1.5*IQR(factor2) & factor1>quantile(factor2,0.25)-1.5*IQR(factor2)))
+
+sex = covid_pss$Q1.1
+race = covid_pss$Q4
+fin = covid_pss$Q24
+class = covid_pss$Q6
+age = covid_pss$Q5
+employ = covid_pss$Q11
+marital = covid_pss$Q3
+total = covid_pss$PSS_total
+# We want to set the base levels correspondingly
+# sex: transgender as 0
+sex[sex==3] = 0
+#race: other as 0
+race[race==9] = 0
+#fin: no change as 0
+fin[fin==3] = 0
+#class: other as 0
+class[class==9] = 0
+#age: 75 or older as 0
+## age 3,4,5,6,7 combine
+## There is a signficant change since the base level changed in this analysis
+age[age==3] = 0
+age[age==4] = 0
+age[age==5] = 0
+age[age==6] = 0
+age[age==7] = 0
+# This is expected to be 57 responses from the "45 or over group". 
+# The univariate analysis needs to be done again
+# The base level listed in the manuscript is incorrect, but this can be explained since we 'redo the analysis'
+# check the stepwise regression part.
+
+#employ: other as 0 
+employ[employ==7] = 0
+#marital: other as 0
+marital[marital==7] = 0
+#child = covid_pss$Q15
+factor_score_anal = data.frame(class = as.factor(class),
+                               sex = as.factor(sex),
+                               race = as.factor(race),
+                               fin = as.factor(fin),
+                               age = as.factor(age),
+                               employ = as.factor(employ),
+                               marital = as.factor(marital),
+                               #child = as.factor(child),
+                               factor1 = factor1,
+                               factor2 = factor2,
+                               total = total
+                               
+                          )
+
+factor_score_anal = na.omit(factor_score_anal) #1699 left
+#univariate
+tapply(factor_score_anal$total,factor_score_anal$class,mean)
+tapply(factor_score_anal$total,factor_score_anal$sex,mean)
+tapply(factor_score_anal$total,factor_score_anal$race,mean)
+tapply(factor_score_anal$total,factor_score_anal$fin,mean)
+tapply(factor_score_anal$total,factor_score_anal$age,mean)#notice '0' stands for '45 and over'
+tapply(factor_score_anal$total,factor_score_anal$employ,mean)
+tapply(factor_score_anal$total,factor_score_anal$marital,mean)
+# ANOVA: H_0: The mean score is the same for all the group
+summary(aov(total~class,data = factor_score_anal)) 
+summary(aov(total~sex,data = factor_score_anal))
+summary(aov(total~race,data = factor_score_anal)) 
+summary(aov(total~fin,data = factor_score_anal)) 
+summary(aov(total~age,data = factor_score_anal))
+summary(aov(total~employ,data = factor_score_anal))
+summary(aov(total~marital,data = factor_score_anal))
+# Kruskal-Wallis: H_0: The rank of the groups are the same (Given the shape similarity conditions, this is equivalent to test all the groups have the same median)
+kruskal.test(total~class,data = factor_score_anal) 
+kruskal.test(total~sex,data = factor_score_anal)
+kruskal.test(total~race,data = factor_score_anal) 
+kruskal.test(total~fin,data = factor_score_anal) 
+kruskal.test(total~age,data = factor_score_anal)
+kruskal.test(total~employ,data = factor_score_anal)
+kruskal.test(total~marital,data = factor_score_anal)
+
+######
+summary(factor_score_anal)
+full.model1 = lm(factor1~class+sex+race+fin+age+employ+marital,data = factor_score_anal)
+full.model2 = lm(factor2~class+sex+race+fin+age+employ+marital,data = factor_score_anal)
+#plot(resid(full.model1))
+step.model1 <- stepAIC(full.model1, direction = "both", 
+                      trace = FALSE)
+step.model2 <- stepAIC(full.model2, direction = "both", 
+                      trace = FALSE)
+
+summary(step.model1)
+
+summary(step.model2)
+mean(factor_score_anal$total)
+sd(factor_score_anal$total)
+stress_class = c(sum(factor_score_anal$total<=13),sum(factor_score_anal$total>13 & factor_score_anal$total<27),sum(factor_score_anal$total>=27))
+
+### PSS score distribution
+aggregate(factor_score_anal$total, list(factor_score_anal$sex), FUN=mean) 
+aggregate(factor_score_anal$total, list(factor_score_anal$sex), FUN=sd) 
+
+aggregate(factor_score_anal$total, list(factor_score_anal$class), FUN=mean) 
+aggregate(factor_score_anal$total, list(factor_score_anal$class), FUN=sd) 
+
+
+aggregate(factor_score_anal$total, list(factor_score_anal$race), FUN=mean) 
+aggregate(factor_score_anal$total, list(factor_score_anal$race), FUN=sd) 
+
+
+aggregate(factor_score_anal$total, list(factor_score_anal$fin), FUN=mean) 
+aggregate(factor_score_anal$total, list(factor_score_anal$fin), FUN=sd) 
+
+
+aggregate(factor_score_anal$total, list(factor_score_anal$age), FUN=mean) 
+aggregate(factor_score_anal$total, list(factor_score_anal$age), FUN=sd)
+
+
+aggregate(factor_score_anal$total, list(factor_score_anal$employ), FUN=mean) 
+aggregate(factor_score_anal$total, list(factor_score_anal$employ), FUN=sd)
+
+aggregate(factor_score_anal$total, list(factor_score_anal$marital), FUN=mean) 
+aggregate(factor_score_anal$total, list(factor_score_anal$marital), FUN=sd) 
+
+### The following shall be igonored since the subset selection is not required. 
+
+#sub.model1 <- regsubsets(factor1~class+sex+race+fin+age+employ+marital,data = factor_score_anal)
+#sub.model2 <- regsubsets(factor2~class+sex+race+fin+age+employ+marital,data = factor_score_anal)
+#library(gglasso)
+#factor_pred = data.matrix(factor_score_anal[,1:7]) #Save the predictors
+#result1 = gglasso(factor_pred,factor_score_anal$factor1)
+#plot(result1,log.l=FALSE)
+```
+#In order to use the correct variable selection approach, we need to establish necessary dummy variables and use the stepwise selection method. 
+```{r}
+dim(factor_score_anal)
+#Dem1: Sex
+#Base level: transgender
+male = ifelse(factor_score_anal$sex == 1,1,0)
+female = ifelse(factor_score_anal$sex == 2,1,0)
+#trans = ifelse(factor_score_anal$sex == 3,1,0)
+which(factor_score_anal$sex == 1) == which(male == 1) ##Validate the ifelse statement
+factor_score_anal = cbind(factor_score_anal,male,female)
+### Check the head again
+head(factor_score_anal)
+
+#Dem2: race
+### 1. Native Alaskan/ American Indian
+### 2. Asian or Asian American
+### 3. Black or African American
+### 4. Hispanic/Latino/a/x
+### 5. MENA/Middle Eastern Origin
+### 6. Pacific Islander/Hawaiian
+### 7. White/ Caucasian
+### 8. Biracial/Multiracial
+### 9. Other
+#Based level: Other
+native = ifelse(factor_score_anal$race == 1,1,0)
+asian= ifelse(factor_score_anal$race == 2,1,0)
+black = ifelse(factor_score_anal$race == 3,1,0)
+hispanic = ifelse(factor_score_anal$race == 4,1,0)
+mena = ifelse(factor_score_anal$race == 5,1,0)
+pac = ifelse(factor_score_anal$race == 6,1,0)
+white = ifelse(factor_score_anal$race == 7,1,0)
+bimulti = ifelse(factor_score_anal$race == 8,1,0)
+factor_score_anal = cbind(factor_score_anal,native,asian,black,hispanic,mena,pac,white,bimulti)
+
+#Dem3: class standing
+###### Classification (Q6 coding:6: Master; 7: PhD; 8: Not seeking for degree; 9: Other)
+###### 1-5: different levels of undergrad
+###### Base: other
+fre = ifelse(factor_score_anal$class == 1,1,0)
+sop = ifelse(factor_score_anal$class == 2,1,0)
+jun = ifelse(factor_score_anal$class == 3,1,0)
+sen = ifelse(factor_score_anal$class == 4,1,0)
+over5 = ifelse(factor_score_anal$class == 5,1,0)
+master = ifelse(factor_score_anal$class == 6,1,0)
+phd = ifelse(factor_score_anal$class == 7,1,0)
+non_deg = ifelse(factor_score_anal$class == 8,1,0)
+factor_score_anal = cbind(factor_score_anal,fre,sop,jun,sen,over5,master,phd,non_deg)
+
+#Dem4: Marital
+#Married:1
+#Widowed:2
+#Divorced:3
+#Separated:4
+#Partnered:5
+#Single:6
+#Other:7 Base level
+mar = ifelse(factor_score_anal$marital == 1,1,0)
+wid = ifelse(factor_score_anal$marital == 2,1,0)
+div = ifelse(factor_score_anal$marital == 3,1,0)
+sep = ifelse(factor_score_anal$marital == 4,1,0)
+par = ifelse(factor_score_anal$marital == 5,1,0)
+sin = ifelse(factor_score_anal$marital == 6,1,0)
+factor_score_anal = cbind(factor_score_anal,mar,wid,div,sep,par,sin)
+
+#Dem5: Age
+#18-24: 1
+#25-34: 2
+#35-44: 3
+#45-54: 4
+#55-64: 5
+#65-74: 6
+#75 or older: 7: base level
+age1 = ifelse(factor_score_anal$age == 1,1,0)
+age2 = ifelse(factor_score_anal$age == 2,1,0)
+age3 = ifelse(factor_score_anal$age == 3,1,0)
+age4 = ifelse(factor_score_anal$age == 4,1,0)
+age5 = ifelse(factor_score_anal$age == 5,1,0)
+age6 = ifelse(factor_score_anal$age == 6,1,0)
+factor_score_anal = cbind(factor_score_anal,age1,age2,age3,age4,age5,age6)
+
+#Dem6: employment
+#Full-time:1
+#Part-time:2
+#Unemployed:3
+#Laid off due to COVID-19:4
+#Retired:5
+#Not working due to disability:6
+#Other: 7 base level
+emp1 = ifelse(factor_score_anal$employ == 1,1,0)
+emp2 = ifelse(factor_score_anal$employ == 2,1,0)
+emp3 = ifelse(factor_score_anal$employ == 3,1,0)
+emp4 = ifelse(factor_score_anal$employ == 4,1,0)
+emp5 = ifelse(factor_score_anal$employ == 5,1,0)
+emp6 = ifelse(factor_score_anal$employ == 6,1,0)
+factor_score_anal = cbind(factor_score_anal,emp1,emp2,emp3,emp4,emp5,emp6)
+
+#Dem7: financial status
+#A lot more stressful:1
+#Somewhat more stressful:2
+#No change: 3 -> base level
+#Somewhat less stressful:4
+#A lot less stressful:5
+fin1 = ifelse(factor_score_anal$fin == 1,1,0)
+fin2 = ifelse(factor_score_anal$fin == 2,1,0)
+fin3 = ifelse(factor_score_anal$fin == 4,1,0) #Notice here directly jump to less stressful
+fin4 = ifelse(factor_score_anal$fin == 5,1,0) 
+factor_score_anal = cbind(factor_score_anal,fin1,fin2,fin3,fin4)
+head(factor_score_anal[,1:9]) 
+#Create the new data frame with only dummies
+Factor1_score_anal = factor_score_anal[,c(8,10:49)] #Now the old subjects contain 49 columns and use this 
+#to analyze factor 1
+Factor2_score_anal = factor_score_anal[,9:49] #Now the old subjects contain 49 columns and use this 
+#to analyze factor 2
+full.model1 = lm(factor1~.,data = Factor1_score_anal)
+full.model2 = lm(factor2~.,data = Factor2_score_anal)
+#Selection based on Akaike Information Criterion
+step.model1 <- stepAIC(full.model1, direction = "both", 
+                      trace = FALSE)
+step.model2 <- stepAIC(full.model2, direction = "both", 
+                      trace = FALSE)
+summary(step.model1)
+summary(step.model2)
+
+factor_male = subset(factor_score_anal,sex==1)
+factor_female = subset(factor_score_anal,sex==2)
+mean(factor_male$factor1)
+mean(factor_female$factor1)
+mean(factor_male$factor2)
+mean(factor_female$factor2)
+###gg lasso exploration
+library(gglasso)
+factor1_pred = data.matrix(Factor1_score_anal[,2:41]) #Save the predictors
+result1 = gglasso(factor1_pred,Factor1_score_anal$factor1)
+plot(result1)
+factor2_pred = data.matrix(Factor2_score_anal[,2:41]) #Save the predictors
+result2 = gglasso(factor2_pred,Factor2_score_anal$factor2)
+plot(result2)
+
+```
+
+```{r}
+library(ggplot2)
+se = function(x)sqrt(var(x)/length(x))
+### Other: 0
+### Male: 1
+### Female: 2
+sex_factor1 = aggregate(factor_score_anal$factor1, list(factor_score_anal$sex), FUN=mean)
+sex_factor2 = aggregate(factor_score_anal$factor2, list(factor_score_anal$sex), FUN=mean)
+sex_se1 = aggregate(factor_score_anal$factor1, list(factor_score_anal$sex), FUN=se)
+sex_se2 = aggregate(factor_score_anal$factor2, list(factor_score_anal$sex), FUN=se)
+### Create a dataset
+gender = c(rep("Other",2), rep("Male" , 2), rep("Female",2))
+condition = rep(c("Irritability" , "Anxiety") , 3)
+value = c(sex_factor1[1,2], sex_factor2[1,2],sex_factor1[2,2], sex_factor2[2,2],sex_factor1[3,2], sex_factor2[3,2])
+sd =c(sex_se1[1,2], sex_se2[1,2],sex_se1[2,2], sex_se2[2,2],sex_se1[3,2], sex_se2[3,2])
+data = data.frame(gender,condition,value)
+### Grouped 
+genderf = ggplot(data, aes(fill=condition, y=value, x=gender))+geom_bar(position="dodge", stat="identity")+ylab("Factor Score")+xlab("Gender")+labs(fill = "Factor")+geom_errorbar(aes(ymin = value-sd,ymax = value+sd),width=0.2,position = position_dodge(.9))+theme(text = element_text(size=20))+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))
+ggsave("gender.tiff", plot = genderf, width=12, height=8, dpi=300)
+
+#Dem3: class standing
+#### Classification (Q6 coding:6: Master; 7: PhD; 8: Not seeking for degree; 9: Other)
+#### 1-5: different levels of undergrad
+#### Base: other
+class_factor1 = aggregate(factor_score_anal$factor1, list(factor_score_anal$class), FUN=mean)
+class_factor2 = aggregate(factor_score_anal$factor2, list(factor_score_anal$class), FUN=mean)
+class_sd1 = aggregate(factor_score_anal$factor1, list(factor_score_anal$class), FUN=se)
+class_sd2 = aggregate(factor_score_anal$factor2, list(factor_score_anal$class), FUN=se)
+### Create a dataset
+class = c(rep("Other",2),rep("Freshman",2), rep("Sophomore" , 2), rep("Junior",2), rep("Senior",2), rep("5th year or more undergrad",2), rep("Master's",2),rep("PhD",2), rep("non-degree seeking",2))
+condition = rep(c("Irritability" , "Anxiety") , 9)
+value = c(class_factor1[1,2], class_factor2[1,2],class_factor1[2,2], class_factor2[2,2],class_factor1[3,2], class_factor2[3,2], class_factor1[4,2], class_factor2[4,2],class_factor1[5,2], class_factor2[5,2],class_factor1[6,2], class_factor2[6,2], class_factor1[7,2], class_factor2[7,2],class_factor1[8,2], class_factor2[8,2],class_factor1[9,2], class_factor2[9,2])
+
+sd =  c(class_sd1[1,2], class_sd2[1,2],class_sd1[2,2], class_sd2[2,2],class_sd1[3,2], class_sd2[3,2], class_sd1[4,2], class_sd2[4,2],class_sd1[5,2], class_sd2[5,2],class_sd1[6,2], class_sd2[6,2], class_factor1[7,2], class_sd2[7,2],class_sd1[8,2], class_sd2[8,2],class_sd1[9,2], class_sd2[9,2])
+
+data = data.frame(class,condition,value)
+### Grouped 
+classf = ggplot(data, aes(fill= class, y=value, x=condition))+geom_bar(position="dodge", stat="identity")+ylab("Factor Score")+xlab("Factor")+labs(fill = "Class Standing")+geom_errorbar(aes(ymin = value-sd,ymax = value+sd),width=0.2,position = position_dodge(.9))+theme(text = element_text(size=20))+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))
+ggsave("class.tiff", plot = classf, width=12, height=8, dpi=300)
+
+
+#Dem2: race
+### 1. Native Alaskan/ American Indian
+### 2. Asian or Asian American
+### 3. Black or African American
+### 4. Hispanic/Latino/a/x
+### 5. MENA/Middle Eastern Origin
+### 6. Pacific Islander/Hawaiian
+### 7. White/ Caucasian
+### 8. Biracial/Multiracial
+### 0. Other
+#Based level: Other
+
+race_factor1 = aggregate(factor_score_anal$factor1, list(factor_score_anal$race), FUN=mean)
+race_factor2 = aggregate(factor_score_anal$factor2, list(factor_score_anal$race), FUN=mean) 
+race_sd1 = aggregate(factor_score_anal$factor1, list(factor_score_anal$race), FUN=se)
+race_sd2 = aggregate(factor_score_anal$factor2, list(factor_score_anal$race), FUN=se)
+Ethnicity = c(rep("Other",2),rep("Asian/Asian American",2),rep("Native American/American Indian",2), rep("Black/African American" , 2), rep("Hispanic",2), rep("Middle Eastern Origin",2), rep("Pacific Islander/Hawaiian",2), rep("White/Caucasian",2), rep("Biracial/Multiracial",2))
+Factor = rep(c("Irritability" , "Anxiety") , 9)
+value = c(race_factor1[1,2], race_factor2[1,2],race_factor1[2,2], race_factor2[2,2],race_factor1[3,2], race_factor2[3,2], race_factor1[4,2], race_factor2[4,2],race_factor1[5,2], race_factor2[5,2],race_factor1[6,2], race_factor2[6,2], race_factor1[7,2], race_factor2[7,2],race_factor1[8,2], race_factor2[8,2],race_factor1[9,2], race_factor2[9,2])
+
+sd =  c(race_sd1[1,2], race_sd2[1,2],race_sd1[2,2], race_sd2[2,2],race_sd1[3,2], race_sd2[3,2], race_sd1[4,2], race_sd2[4,2],race_sd1[5,2], race_sd2[5,2],race_sd1[6,2], race_sd2[6,2], race_factor1[7,2], race_sd2[7,2],race_sd1[8,2], race_sd2[8,2],race_sd1[9,2], race_sd2[9,2])
+data = data.frame(Ethnicity,condition,value)
+### Grouped 
+ethnicityf = ggplot(data, aes(fill=Ethnicity, y=value, x=Factor))+geom_bar(position="dodge", stat="identity")+ylab("Factor Score")+xlab("Factor")+labs(fill = "Ethnicity")+geom_errorbar(aes(ymin = value-sd,ymax = value+sd),width=0.2,position = position_dodge(.9))+theme(text = element_text(size=20))+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))
+ggsave("ethnicityf.tiff", plot = ethnicityf, width=12, height=8, dpi=300)
+
+#Dem7: financial status
+###A lot more stressful:1
+###Somewhat more stressful:2
+###No change: 3 base level
+###Somewhat less stressful:4
+###A lot less stressful:5
+
+fin_factor1 = aggregate(factor_score_anal$factor1, list(factor_score_anal$fin), FUN=mean) 
+fin_factor2 = aggregate(factor_score_anal$factor2, list(factor_score_anal$fin), FUN=mean) 
+fin_sd1 = aggregate(factor_score_anal$factor1, list(factor_score_anal$fin), FUN=se)
+fin_sd2 = aggregate(factor_score_anal$factor2, list(factor_score_anal$fin), FUN=se)
+### Create a dataset
+financial_status = c(rep("no \n change",2), rep("a lot more \n stressful",2), rep("somewhat more \n stressful",2), rep("less \n stressful",2), rep("a lot less \n stressful",2))
+condition = rep(c("Irritability" , "Anxiety") , 5)
+value = c(fin_factor1[1,2], fin_factor2[1,2],fin_factor1[2,2], fin_factor2[2,2],fin_factor1[3,2], fin_factor2[3,2], fin_factor1[4,2], fin_factor2[4,2], fin_factor1[5,2], fin_factor2[5,2])
+sd =  c(fin_sd1[1,2], fin_sd2[1,2],fin_sd1[2,2], fin_sd2[2,2],fin_sd1[3,2], fin_sd2[3,2], fin_sd1[4,2], fin_sd2[4,2],fin_sd1[5,2], fin_sd2[5,2])
+data = data.frame(financial_status,condition,value)
+### Grouped 
+finf = ggplot(data, aes(fill=condition, y=value, x=financial_status))+geom_bar(position="dodge", stat="identity")+ylab("Factor Score")+xlab("Financial Status")+labs(fill = "Factor")+geom_errorbar(aes(ymin = value-sd,ymax = value+sd),width=0.2,position = position_dodge(.9))+theme(text = element_text(size=20))+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))
+ggsave("finf.tiff", plot = finf, width=12, height=8, dpi=300)
+
+#Dem5: Age
+###18-24: 1
+###25-34: 2
+###35-44: 3
+###45-54: 4
+###55-64: 5
+###65-74: 6
+###75 or older: 7: base level
+
+age_factor1 = aggregate(factor_score_anal$factor1, list(factor_score_anal$age), FUN=mean) 
+age_factor2 = aggregate(factor_score_anal$factor2, list(factor_score_anal$age), FUN=mean)
+age_sd1 = aggregate(factor_score_anal$factor1, list(factor_score_anal$age), FUN=se)
+age_sd2 = aggregate(factor_score_anal$factor2, list(factor_score_anal$age), FUN=se)
+### Create a dataset
+age_group = c(rep("18-25",2), rep("25-34",2), rep("35-44",2), rep("45-54",2), rep("55-64",2),rep("65-74",2))
+condition = rep(c("Irritability" , "Anxiety") , 6)
+value = c(age_factor1[1,2], age_factor2[1,2],age_factor1[2,2], age_factor2[2,2],age_factor1[3,2], age_factor2[3,2], age_factor1[4,2], age_factor2[4,2], age_factor1[5,2], age_factor2[5,2],age_factor1[6,2], age_factor2[6,2])
+sd =  c(age_sd1[1,2], age_sd2[1,2],age_sd1[2,2], age_sd2[2,2],age_sd1[3,2], age_sd2[3,2], age_sd1[4,2], age_sd2[4,2],age_sd1[5,2], age_sd2[5,2],age_sd1[6,2], age_sd2[6,2])
+data = data.frame(age_group,condition,value)
+### Grouped 
+agef = ggplot(data, aes(fill=age_group, y=value, x=condition))+geom_bar(position="dodge", stat="identity")+ylab("Factor Score")+xlab("Factor")+labs(fill = "Age Group")+geom_errorbar(aes(ymin = value-sd,ymax = value+sd),width=0.2,position = position_dodge(.9))+theme(text = element_text(size=20))+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))
+ggsave("agef.tiff", plot = agef, width=12, height=8, dpi=300)
+
+###Dem6: employment
+###Full-time:1
+###Part-time:2
+###Unemployed:3
+###Laid off due to COVID-19:4
+###Retired:5
+###Not working due to disability:6
+###Other: 7 base level
+
+emp_factor1 = aggregate(factor_score_anal$factor1, list(factor_score_anal$employ), FUN=mean) 
+emp_factor2 = aggregate(factor_score_anal$factor2, list(factor_score_anal$employ), FUN=mean)
+emp_sd1 = aggregate(factor_score_anal$factor1, list(factor_score_anal$employ), FUN=se)
+emp_sd2 = aggregate(factor_score_anal$factor2, list(factor_score_anal$employ), FUN=se)
+### Create a dataset
+emp_group = c(rep("Other",2),rep("Full-time",2), rep("Part-time",2), rep("Unemployed",2), rep("Laid off due to COVID-19",2), rep("Retired",2),rep("Not working due to disability",2))
+condition = rep(c("Irritability" , "Anxiety") , 7)
+value = c(emp_factor1[1,2], emp_factor2[1,2],emp_factor1[2,2], emp_factor2[2,2],emp_factor1[3,2], emp_factor2[3,2], emp_factor1[4,2], emp_factor2[4,2], emp_factor1[5,2], emp_factor2[5,2],emp_factor1[6,2], emp_factor2[6,2], emp_factor1[7,2], emp_factor2[7,2])
+sd =  c(emp_sd1[1,2], emp_sd2[1,2],emp_sd1[2,2], emp_sd2[2,2],emp_sd1[3,2], emp_sd2[3,2], emp_sd1[4,2], emp_sd2[4,2],emp_sd1[5,2], emp_sd2[5,2],emp_sd1[6,2], emp_sd2[6,2],emp_sd1[7,2], emp_sd2[7,2])
+data = data.frame(emp_group,condition,value)
+### Grouped 
+empf = ggplot(data, aes(fill=emp_group, y=value, x=condition))+geom_bar(position="dodge", stat="identity")+ylab("Factor Score")+xlab("Factor")+labs(fill = "Employment Status")+geom_errorbar(aes(ymin = value-sd,ymax = value+sd),width=0.2,position = position_dodge(.9))+theme(text = element_text(size=20))+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))
+ggsave("empf.tiff", plot = empf, width=12, height=8, dpi=300)
+
+### Dem4: Marital
+### Married:1
+### Widowed:2
+### Divorced:3
+### Separated:4
+### Partnered:5
+### Single:6
+### Other:7 Base level
+
+mar_factor1 = aggregate(factor_score_anal$factor1, list(factor_score_anal$marital), FUN=mean)
+mar_factor2 = aggregate(factor_score_anal$factor2, list(factor_score_anal$marital), FUN=mean) 
+mar_sd1 = aggregate(factor_score_anal$factor1, list(factor_score_anal$marital), FUN=se)
+mar_sd2 = aggregate(factor_score_anal$factor2, list(factor_score_anal$marital), FUN=se)
+### Create a dataset
+mar_group = c(rep("Other",2), rep("Married",2), rep("Widowed",2), rep("Divorced",2), rep("Separated",2),rep("Partnered",2), rep("Single",2))
+condition = rep(c("Irritability" , "Anxiety") , 7)
+value = c(mar_factor1[1,2], mar_factor2[1,2],mar_factor1[2,2], mar_factor2[2,2],mar_factor1[3,2], mar_factor2[3,2], mar_factor1[4,2], mar_factor2[4,2], mar_factor1[5,2], mar_factor2[5,2],mar_factor1[6,2], mar_factor2[6,2], mar_factor1[7,2], mar_factor2[7,2])
+sd =  c(mar_sd1[1,2], mar_sd2[1,2],mar_sd1[2,2], mar_sd2[2,2],mar_sd1[3,2], mar_sd2[3,2], mar_sd1[4,2], mar_sd2[4,2],mar_sd1[5,2], mar_sd2[5,2],mar_sd1[6,2], mar_sd2[6,2],mar_sd1[7,2], mar_sd2[7,2])
+data = data.frame(emp_group,condition,value)
+### Grouped 
+marf = ggplot(data, aes(fill=mar_group, y=value, x=condition))+geom_bar(position="dodge", stat="identity")+ylab("Factor Score")+xlab("Factor")+labs(fill = "Marital Status")+geom_errorbar(aes(ymin = value-sd,ymax = value+sd),width=0.2,position = position_dodge(.9))+theme(text = element_text(size=20))+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))
+ggsave("marf.tiff", plot = marf, width=12, height=8, dpi=300)
+```
+
